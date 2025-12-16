@@ -1,0 +1,11 @@
+float moveHorizontal = Input.GetAxis("Horizontal");
+float moveVertical = Input.GetAxis("Vertical");
+Vector3 movement = new Vector3(moveHorizontal, 0f, moveVertical);
+board.transform.Translate(movement * board.walkSpeed * Time.deltaTime, Space.Self);
+float mouseX = Input.GetAxis("Mouse X") * board.sensitivity * Time.deltaTime;
+float mouseY = Input.GetAxis("Mouse Y") * board.sensitivity * Time.deltaTime;
+board.xRotation -= mouseY;
+board.yRotation -= mouseX;
+board.xRotation = Mathf.Clamp(board.xRotation, -70, 70);
+board.transform.localRotation = Quaternion.Euler(board.xRotation, -board.yRotation, 0f);
+board.cam.position = board.transform.position;
