@@ -349,7 +349,7 @@ public class TextOptimization : EditorWindow
                     tempChar = tempContenet[i];
                     for (int j = i + 1; j < tempContenet.Length; j++)
                     {
-                        if (tempChar == tempContenet[j] || tempChar == ' ')
+                        if (tempChar == tempContenet[j])
                         {
                             tempContenet.Remove(j, 1);
                             j--;
@@ -377,4 +377,5 @@ public class TextOptimization : EditorWindow
             }
         }
     }
+
 }
