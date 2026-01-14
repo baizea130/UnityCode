@@ -1,14 +1,13 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Text;
 using Unity.VisualScripting;
 using UnityEditor;
 using UnityEditor.SceneManagement;
-using UnityEditor.VersionControl;
 using UnityEngine;
-using UnityEngine.SceneManagement;
+
 public class PlayerPrefs管理器 : EditorWindow
 {
     private string[] options = { "int", "float", "string" };
@@ -173,12 +172,11 @@ public class 场景管理器 : EditorWindow
         }
     }
 }
-//使用 [CustomEditor] 标记为通用编辑器扩展
-[CustomEditor(typeof(MonoBehaviour), true)]
 
+[CustomEditor(typeof(MonoBehaviour), true)]
 public class ExternScript : Editor
 {
-    private string[] options = { "自身", "父物体"};
+    private string[] options = { "自身", "父物体" };
     private enum SearchType
     {
         Self, Parent
@@ -186,21 +184,26 @@ public class ExternScript : Editor
     private SearchType Type;
     public override void OnInspectorGUI()
     {
-        // 绘制默认的 Inspector GUI
         base.OnInspectorGUI();
-        // 添加自定义按钮
+
+        GUILayout.Label("", GUI.skin.horizontalSlider);
+        EditorGUILayout.Space();
         GUILayout.BeginHorizontal();
-        GUIStyle style = new GUIStyle(GUI.skin.button);
-        style.normal.textColor = Color.yellow;
-        if (GUILayout.Button("自动检测并赋值组件",style))
+        if (GUILayout.Button("自动检测并赋值组件"))
         {
             MonoBehaviour targetScript = target as MonoBehaviour;
-            Debug.Log(Type);
             DetectAndAssignComponents(targetScript, Type);
         }
         Type = (SearchType)EditorGUILayout.Popup("检测范围：", (int)Type, options, GUILayout.MinWidth(200));
-
         GUILayout.EndHorizontal();
+        GUIStyle style = new GUIStyle(GUI.skin.button);
+        style.normal.textColor = Color.yellow;
+        if (GUILayout.Button("打开调试函数面板", style))
+        {
+            ScriptsMethods.ShowPanel();
+            ScriptsMethods.type = target.GetType();
+            ScriptsMethods.target = (MonoBehaviour)this.target;
+        }
     }
 
     private void DetectAndAssignComponents(MonoBehaviour targetScript, SearchType type)
@@ -216,17 +219,12 @@ public class ExternScript : Editor
                 break;
         }
 
-        // 遍历脚本中的所有字段
         var fields = targetScript.GetType().GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
         foreach (var field in fields)
         {
-            // 检查字段是否是 Component 类型
             if (typeof(Component).IsAssignableFrom(field.FieldType))
             {
-                // 获取字段的当前值
                 Component currentValue = field.GetValue(targetScript) as Component;
-
-                // 如果字段为空，则尝试从游戏对象上获取组件并赋值
                 if (currentValue == null)
                 {
                     Component component = target.GetComponent(field.FieldType);
@@ -240,6 +238,143 @@ public class ExternScript : Editor
         }
     }
 }
-
-
-
+public class ScriptsMethods : EditorWindow
+{
+    public static MonoBehaviour target;
+    public static Type type;
+    private static MethodInfo[] Methods;
+    private static int MethodNum;
+    private static string[] CurrentParams;
+    private static object[] Realparameters;
+    public static void ShowPanel()
+    {
+        GetWindow<ScriptsMethods>("Methods");
+    }
+    void OnGUI()
+    {
+        try
+        { Methods = type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance); }
+        catch { }
+        if (Methods != null)
+        {
+            MethodNum = Methods.Length;
+            for (int i = 0; i < MethodNum; i++)
+            {
+                if (Methods[i].DeclaringType == type)
+                {
+                    GUILayout.BeginHorizontal();
+                    ParameterInfo[] parameters = Methods[i].GetParameters();
+                    if (parameters.Length > 0)
+                    {
+                        if (CurrentParams == null || CurrentParams.Length != parameters.Length)
+                        {
+                            CurrentParams = new string[parameters.Length];
+                        }
+                        for (int a = 0; a < CurrentParams.Length; a++)
+                        {
+                            GUILayout.Label($"{parameters[a].Name}({parameters[a].ParameterType})");
+                            CurrentParams[a] = EditorGUILayout.TextField(CurrentParams[a]);
+                        }
+                        try
+                        {
+                            if (Realparameters == null || Realparameters.Length != parameters.Length)
+                            {
+                                Realparameters = new object[parameters.Length];
+                            }
+                            for (int k = 0; k < parameters.Length; k++)
+                            {
+                                if (parameters[k] != null)
+                                {
+                                    Realparameters[k] = Convert.ChangeType(CurrentParams[k], parameters[k].ParameterType);
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            //Debug.LogError($"调用方法 {Methods[i].Name} 时出错: {e.Message}");
+                        }
+                        GUILayout.EndHorizontal();
+                        if (GUILayout.Button(Methods[i].Name))
+                        {
+                            if (Realparameters != null)
+                            {
+                                Methods[i]?.Invoke(target, Realparameters);
+                            }
+                        }
+                        GUILayout.Label("", GUI.skin.horizontalSlider);
+                        EditorGUILayout.Space();
+                    }
+                    else
+                    {
+                        GUILayout.EndHorizontal();
+                        if (GUILayout.Button(Methods[i].Name))
+                        {
+                            Methods[i]?.Invoke(target, null);
+                        }
+                        GUILayout.Label("", GUI.skin.horizontalSlider);
+                        EditorGUILayout.Space();
+                    }
+                }
+            }
+        }
+    }
+}
+public class TextOptimization : EditorWindow
+{
+    private TextAsset selectedTextAsset;
+    private bool ifCouldBeRevoke = false;
+    StringBuilder tempContenet;
+    StringBuilder lastContenet = null;
+    [MenuItem("Tools/TextOptimization", false, 2)]
+    public static void ShowWindow()
+    {
+        GetWindow<TextOptimization>("TextOptimization");
+    }
+    private void OnGUI()
+    {
+        minSize = new Vector2(500, 200);
+        maxSize = new Vector2(600, 200);
+        selectedTextAsset = (TextAsset)EditorGUILayout.ObjectField("Text Asset", selectedTextAsset, typeof(TextAsset), true);
+        GUILayout.Label("用于优化用作字体资产的文本文档，将重复字符和空格删除以减小文件大小", EditorStyles.label);
+        if (selectedTextAsset != null)
+        {
+            if (GUILayout.Button("TextOptimize"))
+            {
+                ifCouldBeRevoke = true;
+                lastContenet = new StringBuilder(selectedTextAsset.text);
+                tempContenet = new StringBuilder(selectedTextAsset.text);
+                char tempChar;
+                for (int i = 0; i < tempContenet.Length; i++)
+                {
+                    tempChar = tempContenet[i];
+                    for (int j = i + 1; j < tempContenet.Length; j++)
+                    {
+                        if (tempChar == tempContenet[j] || tempChar == ' ')
+                        {
+                            tempContenet.Remove(j, 1);
+                            j--;
+                        }
+                    }
+                }
+                string path = AssetDatabase.GetAssetPath(selectedTextAsset);
+                File.WriteAllText(path, tempContenet.ToString());
+                AssetDatabase.Refresh();
+                Debug.Log($"文本优化完成！共删除 {lastContenet.Length - tempContenet.Length} 个字符");
+            }
+            if (ifCouldBeRevoke)
+            {
+                if (GUILayout.Button("RevokeOptimize"))
+                {
+                    string path = AssetDatabase.GetAssetPath(selectedTextAsset);
+                    File.WriteAllText(path, lastContenet.ToString());
+                    AssetDatabase.Refresh();
+                    ifCouldBeRevoke = false;
+                    Debug.Log("已撤销优化！");
+                }
+                GUIStyle style = new GUIStyle();
+                style.normal.textColor = Color.yellow;
+                GUILayout.Label("关闭此界面则无法撤回", style);
+            }
+        }
+    }
+}
